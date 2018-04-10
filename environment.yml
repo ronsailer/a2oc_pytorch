@@ -1,0 +1,6 @@
+name: a2oc_pytorch
+dependencies:
+    - python=3.6.4
+    - numpy
+    - torch
+    - torchvision
