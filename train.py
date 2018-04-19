@@ -1,7 +1,7 @@
 from multiprocessing import Process, Value, Array
 import numpy as np
 from OC_pytorch import AOCAgent_PYTORCH
-import cv2,copy,pickle,os,time,argparse
+import copy,pickle,os,time,argparse
 from PIL import Image
 from utils.helper import foldercreation, str2bool, get_folder_name
 
@@ -119,7 +119,7 @@ class Training():
     self.id_num = id_num
 
     self.env = ALE_env(args, rng=rng)
-    self.agent = AOCAgent_THEANO(self.env.action_space, id_num, arr, num_moves, args)
+    self.agent = AOCAgent_PYTORCH(self.env.action_space, id_num, arr, num_moves, args)
 
     self.train()
 
