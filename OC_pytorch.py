@@ -8,7 +8,6 @@ from collections import OrderedDict
 # do not delete this line. Importing gym_gridworld registers the environments in gym. Hacky but deal with it
 import gym_gridworld
 
-
 def clip_grads(grads, clip):
 	if clip > 0.1:
 		norm = T.sqrt(T.sum([T.sum(T.sqr(g)) for g in grads])*2) + 1e-7
@@ -131,7 +130,7 @@ class AOCAgent_PYTORCH():
 			if self.args.init_num_moves > 0:
 				for s, p in zip(shared_arr, self.params):
 					p.set_value(np.frombuffer(s, dtype="float32").reshape(p.get_value().shape))
-			print "LOADED VALUES"
+				print "LOADED VALUES"
 
 	def share_rms(self, shared_arr):
 		# Ties rms params between threads with borrow=True flag
@@ -167,6 +166,7 @@ class AOCAgent_PYTORCH():
 	def tracker(self):
 		term_prob = float(self.termination_counter)/self.frame_counter*100
 		csv_things = [self.num_moves.value, self.total_reward, round(term_prob,1)]+list(self.o_tracker_chosen)+list(self.o_tracker_steps)
+		print self.o_tracker_steps
 		with open(self.args.folder_name+"/data.csv", "a") as myfile:
 			myfile.write(",".join([str(cc) for cc in csv_things])+"\n")
 
@@ -223,7 +223,7 @@ class AOCAgent_PYTORCH():
 					R = np.float32(self.r_seq[j] + self.args.gamma*R)
 					V.append(R)
 				self.update_weights(self.x_seq[:self.t_counter], self.a_seq[:self.t_counter], V[::-1],
-				                    self.o_seq[:self.t_counter], self.t_counter, self.delib+self.args.margin_cost)
-				self.reset_storing()
-				if not end_ep:
-					self.update_internal_state(new_x)
+	                                self.o_seq[:self.t_counter], self.t_counter, self.delib+self.args.margin_cost)
+			self.reset_storing()
+		if not end_ep:
+			self.update_internal_state(new_x)
