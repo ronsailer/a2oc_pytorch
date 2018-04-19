@@ -169,7 +169,6 @@ class AOCAgent_PYTORCH():
   def tracker(self):
     term_prob = float(self.termination_counter)/self.frame_counter*100
     csv_things = [self.num_moves.value, self.total_reward, round(term_prob,1)]+list(self.o_tracker_chosen)+list(self.o_tracker_steps)
-    print self.o_tracker_steps
     with open(self.args.folder_name+"/data.csv", "a") as myfile:
       myfile.write(",".join([str(cc) for cc in csv_things])+"\n")
 
