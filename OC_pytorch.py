@@ -5,6 +5,9 @@ import theano.tensor as T
 from lasagne.updates import norm_constraint
 from collections import OrderedDict
 
+# do not delete this line. Importing gym_gridworld registers the environments in gym. Hacky but deal with it
+import gym_gridworld
+
 def clip_grads(grads, clip, clip_type):
   if clip > 0.1:
     if clip_type == "norm":
@@ -14,6 +17,7 @@ def clip_grads(grads, clip, clip_type):
       scale = clip * T.min([1/norm,1./clip]).astype("float32")
       grads = [g*scale for g in grads]
   return grads
+
 
 def rmsprop(params, grads, clip=0, rho=0.99, eps=0.1, clip_type="norm"):
   grads = clip_grads(grads, clip, clip_type)
@@ -28,7 +32,7 @@ def rmsprop(params, grads, clip=0, rho=0.99, eps=0.1, clip_type="norm"):
   return updates, all_grads, rms_weights
 
 
-class AOCAgent_THEANO():
+class AOCAgent_PYTORCH():
   def __init__(self, num_actions, id_num, shared_arr=None, num_moves=None, args=None):
     print "USING OPTION CRITIC"
     self.args = args
@@ -37,12 +41,13 @@ class AOCAgent_THEANO():
     self.num_moves = num_moves
     self.reset_storing()
     self.rng = np.random.RandomState(100+id_num)
-    model_network = [{"model_type": "conv", "filter_size": [4,4], "pool": [1,1], "stride": [2,2], "out_size": 32, "activation": "relu"},
-                     {"model_type": "conv", "filter_size": [3,3], "pool": [1,1], "stride": [2,2], "out_size": 64, "activation": "relu"},
+    # input is 8x8
+    model_network = [{"model_type": "conv", "filter_size": [4,4], "pool": [1,1], "stride": [1,1], "out_size": 25, "activation": "relu"},
+                     {"model_type": "conv", "filter_size": [3,3], "pool": [1,1], "stride": [1,1], "out_size": 9, "activation": "relu"},
                      {"model_type": "mlp", "out_size": 48, "activation": "relu"},
-                     {"model_type": "mlp", "out_size": 32, "activation": "relu"}]
+                     {"model_type": "mlp", "out_size": 5, "activation": "relu"}]
     out = [None,model_network[-1]["out_size"]]
-    self.conv = Model(model_network, input_size=[None,args.concat_frames*(1 if args.grayscale else 3),84,84])
+    self.conv = Model(model_network, input_size=[None,args.concat_frames*(1 if args.grayscale else 3),8,8])
     self.termination_model = Model([{"model_type": "mlp", "out_size": args.num_options, "activation": "sigmoid", "W":0}], input_size=out)
     self.Q_val_model = Model([{"model_type": "mlp", "out_size": args.num_options, "activation": "linear", "W":0}], input_size=out)
     self.options_model = MLP3D(input_size=out[1], num_options=args.num_options, out_size=num_actions, activation="softmax")
@@ -164,6 +169,7 @@ class AOCAgent_THEANO():
   def tracker(self):
     term_prob = float(self.termination_counter)/self.frame_counter*100
     csv_things = [self.num_moves.value, self.total_reward, round(term_prob,1)]+list(self.o_tracker_chosen)+list(self.o_tracker_steps)
+    print self.o_tracker_steps
     with open(self.args.folder_name+"/data.csv", "a") as myfile:
       myfile.write(",".join([str(cc) for cc in csv_things])+"\n")
 
@@ -185,7 +191,7 @@ class AOCAgent_THEANO():
     self.a_seq = np.zeros((self.args.max_update_freq,), dtype="int32")
     self.o_seq = np.zeros((self.args.max_update_freq,), dtype="int32")
     self.r_seq = np.zeros((self.args.max_update_freq,), dtype="float32")
-    self.x_seq = np.zeros((self.args.max_update_freq, self.args.concat_frames*(1 if self.args.grayscale else 3),84,84),dtype="float32")
+    self.x_seq = np.zeros((self.args.max_update_freq, self.args.concat_frames*(1 if self.args.grayscale else 3),8,8),dtype="float32")
     self.t_counter = 0
 
   def store(self, x, new_x, action, raw_reward, done, death):

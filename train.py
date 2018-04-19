@@ -1,12 +1,9 @@
-from multiprocessing import Process, Value, Array, RawArray
-from collections import OrderedDict
+from multiprocessing import Process, Value, Array
 import numpy as np
-from OC_theano import AOCAgent_THEANO
-import cv2,copy,sys,pickle,os,time,argparse
+from OC_pytorch import AOCAgent_PYTORCH
+import cv2,copy,pickle,os,time,argparse
 from PIL import Image
 from utils.helper import foldercreation, str2bool, get_folder_name
-
-import gym_gridworld
 
 class Environment():
   def reset(self):
@@ -24,7 +21,7 @@ class Environment():
 class ALE_env(Environment):
   def __init__(self, args, rng=None):
     import gym
-    env = gym.make(args.sub_env) #+"NoFrameskip-v4")
+    env = gym.make(args.sub_env)
     self.args = args
     self.rng = rng
     self.env = env
@@ -37,7 +34,6 @@ class ALE_env(Environment):
       plt.show(block=False)
 
   def get_lives(self):
-    # return self.env.unwrapped.ale.lives()
     return 1
 
   def noops(self):
@@ -48,7 +44,7 @@ class ALE_env(Environment):
       self.act(1)
 
   def reset(self):
-    self.current_x = np.zeros((self.args.concat_frames*(1 if self.args.grayscale else 3), 84, 84), dtype="float32")
+    self.current_x = np.zeros((self.args.concat_frames*(1 if self.args.grayscale else 3), 8, 8), dtype="float32")
     self.new_obs = self.env.reset()
     self.lives = self.get_lives()
     self.noops()
@@ -78,7 +74,7 @@ class ALE_env(Environment):
     self.current_x[-a:] = new_frame
 
   def act(self, action):
-    raw_reward, dones, done = 0, 0, False
+    raw_reward, dones, done = 0.0, 0, False
     for i in range(self.args.frame_skip):
       if done:
         break
@@ -99,18 +95,12 @@ class ALE_env(Environment):
     return self.current_x, raw_reward, bool(int(dones)), death
 
   def preprocess(self, im, last_im):
-
-    if len(im.shape) < 3:
-      im = cv2.cvtColor(im.astype(np.uint8),cv2.COLOR_GRAY2RGB)
-      last_im = cv2.cvtColor(last_im.astype(np.uint8),cv2.COLOR_GRAY2RGB)
-
     if self.args.color_max:
       im = np.maximum(im, last_im)
     if self.args.grayscale:
-      proportions = [0.299, 0.587, 0.114] # Used to get the brightness when converting to grayscale
+      proportions = [0.299, 0.587, 0.114]
       im = np.sum(im * proportions, axis=2)
-    #im = cv2.resize(im, (84, 110), interpolation=cv2.INTER_AREA)[18:102, :]
-    im = Image.fromarray(im).resize((84, 84), resample=Image.BILINEAR)
+    im = Image.fromarray(im).resize((8, 8), resample=Image.BILINEAR)
     x = np.array(im).astype("int32")
     if not self.args.grayscale:
       x = np.swapaxes(x, 0, 2)
@@ -118,7 +108,6 @@ class ALE_env(Environment):
     return x
 
   def get_frame_count(self):
-    # return self.env.unwrapped.ale.getEpisodeFrameNumber()
     return 1
 
 
@@ -159,10 +148,9 @@ class Training():
         # (self.id_num, total_reward, secs, frames, fps, self.num_moves.value, int(eta/3600), int(eta/60)%60, int(eta%60),
         #   float(self.num_moves.value)/self.args.max_num_frames*100)
 
-        print "id: %d\t reward: %d\t moves: %d\t marginal moves: %d\t\t %.2f%%" % (self.id_num, total_reward,
+        print "id: {}\t reward: {}\t moves: {}\t marginal moves: {}\t\t %.2f%%".format(self.id_num, total_reward,
                                                                                    self.num_moves.value,
-                                                                                   self.num_moves.value - last_num_moves,
-                                                                                   float(self.num_moves.value)/self.args.max_num_frames*100)
+                                                                                   self.num_moves.value - last_num_moves) % (float(self.num_moves.value)/self.args.max_num_frames*100)
         timer = time.time()
         frame_counter = 0
 
@@ -189,11 +177,11 @@ class Training():
 
 def parse_params():
   parser = argparse.ArgumentParser()
-  parser.add_argument('--sub-env', type=str, default="Gridworld0-v0")
+  parser.add_argument('--sub-env', type=str, default="Gridworld2-v0")
   parser.add_argument('--testing', type=str2bool, default=False)
   parser.add_argument('--update-freq', type=int, default=5)
   parser.add_argument('--max-update-freq', type=int, default=30)
-  parser.add_argument('--num-threads', type=int, default=16)
+  parser.add_argument('--num-threads', type=int, default=4)
   parser.add_argument('--death-ends-episode', type=str2bool, default=True)
   parser.add_argument('--max-start-nullops', type=int, default=30)
   parser.add_argument('--frame-skip', type=int, default=4)
@@ -205,13 +193,13 @@ def parse_params():
   parser.add_argument('--color-averaging', type=str2bool, default=False)
   parser.add_argument('--color-max', type=str2bool, default=True)
   parser.add_argument('--grayscale', type=str2bool, default=True)
-  parser.add_argument('--max-num-frames', type=int, default=10000000)
-  parser.add_argument('--max-frames-ep', type=int, default=4000)
-  parser.add_argument('--init-lr', type=float, default=0.0007)
+  parser.add_argument('--max-num-frames', type=int, default=1e7)
+  parser.add_argument('--max-frames-ep', type=int, default=10000)
+  parser.add_argument('--init-lr', type=float, default=7e-4)
   parser.add_argument('--rms-shared', type=str2bool, default=True)
-  parser.add_argument('--critic-coef', type=float, default=1.)
+  parser.add_argument('--critic-coef', type=float, default=1.0)
   parser.add_argument('--num-options', type=int, default=8)
-  parser.add_argument('--option-epsilon', type=float, default=0.1)
+  parser.add_argument('--option-epsilon', type=float, default=1e-5)
   parser.add_argument('--delib-cost', type=float, default=0.0)
   parser.add_argument('--margin-cost', type=float, default=0.0)
   parser.add_argument('--save-path', type=str, default="models")
@@ -257,7 +245,7 @@ if __name__ == '__main__':
 
   env = ALE_env(params)
   if init_num_moves == 0:
-    init_weights = (AOCAgent_THEANO(env.action_space, 0, args=params)).get_param_vals()
+    init_weights = (AOCAgent_PYTORCH(env.action_space, 0, args=params)).get_param_vals()
 
   num_moves = Value("i", init_num_moves, lock=False)
   arr = [Array('f', m.flatten(), lock=False) for m in init_weights]

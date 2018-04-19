@@ -1,45 +1,39 @@
+import torch
 import theano, lasagne
 import theano.tensor as T
 import math, csv, time, sys, os, pdb, copy
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from lasagne.layers import Conv2DLayer, conv
 
-if theano.config.device.startswith("gpu"):
-	from lasagne.layers import cuda_convnet
 import numpy as np
 
 
 def get_init(m, t):
-	inits = {"zeros": lasagne.init.Constant(0.), "norm": lasagne.init.Normal(0.1)}
 	if t not in m:
 		if t == "b":
-			return lasagne.init.Constant(0.)
-		return lasagne.init.GlorotUniform()
-	elif isinstance(m[t], basestring):
-		return inits[m[t]]
+			return torch.nn.init.constant()
+		return torch.nn.init.xavier_uniform()
 	elif isinstance(m[t], int):
-		return lasagne.init.Constant(m[t])
+		return torch.nn.init.constant(m[t])
 	else:
 		return m[t]
 
 
 def get_activation(activation):
 	if activation == "softmax":
-		output = T.nnet.softmax
+		output = torch.nn.Softmax
 	elif activation is None:
 		output = None
 	elif activation == "tanh":
-		output = T.tanh
+		output = torch.nn.Tanh
 	elif activation == "relu":
-		output = T.nnet.relu
+		output = torch.nn.ReLU
 	elif "leaky_relu" in activation:
-		output = lambda x: T.nnet.relu(x, alpha=float(activation.split(" ")[1]))
+		output = lambda x: torch.nn.ReLU(x, alpha=float(activation.split(" ")[1]))
 	elif activation == "linear":
 		output = None
 	elif activation == "sigmoid":
-		output = T.nnet.sigmoid
-	elif activation == "hard_sigmoid":
-		output = T.nnet.hard_sigmoid
+		output = torch.nn.Sigmoid
 	else:
 		print "activation not recognized:", activation
 		raise NotImplementedError
@@ -49,6 +43,7 @@ def get_activation(activation):
 class MLP3D():
 	def __init__(self, input_size=None, num_options=None, out_size=None, activation="softmax"):
 		option_out_size = out_size
+		# xavier initialization
 		limits = (6. / np.sqrt(input_size + option_out_size)) / num_options
 		self.options_W = theano.shared(
 			np.random.uniform(size=(num_options, input_size, option_out_size), high=limits, low=-limits).astype(
