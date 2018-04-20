@@ -133,7 +133,7 @@ class Training():
     total_games = 0
     done = False
 
-    last_num_moves = 0
+    marginal_moves = 0
 
     while self.num_moves.value < self.args.max_num_frames:
       if done:
@@ -149,12 +149,12 @@ class Training():
         #   float(self.num_moves.value)/self.args.max_num_frames*100)
 
         print "id: {}\t reward: {}\t moves: {}\t marginal moves: {}\t\t %.2f%%".format(self.id_num, total_reward,
-                                                                                   self.num_moves.value,
-                                                                                   self.num_moves.value - last_num_moves) % (float(self.num_moves.value)/self.args.max_num_frames*100)
+                                                                                       self.num_moves.value,
+                                                                                       marginal_moves) % (float(self.num_moves.value)/self.args.max_num_frames*100)
         timer = time.time()
         frame_counter = 0
 
-        last_num_moves = self.num_moves.value
+        marginal_moves = 0
 
         if total_games % 1 == 0 and self.id_num == 1 and not self.args.testing:
           self.agent.save_values(folder_name)
@@ -169,6 +169,7 @@ class Training():
       # print action
 
       new_x, reward, done, death = self.env.act(action)
+      marginal_moves += 1
       self.agent.store(x, new_x, action, reward, done, death)
       if self.args.testing:
         self.env.render()
@@ -192,7 +193,7 @@ def parse_params():
   parser.add_argument('--color-averaging', type=str2bool, default=False)
   parser.add_argument('--color-max', type=str2bool, default=True)
   parser.add_argument('--grayscale', type=str2bool, default=True)
-  parser.add_argument('--max-num-frames', type=int, default=80000000)
+  parser.add_argument('--max-num-frames', type=int, default=1e7)
   parser.add_argument('--max-frames-ep', type=int, default=72000)
   parser.add_argument('--init-lr', type=float, default=0.0007)
   parser.add_argument('--rms-shared', type=str2bool, default=True)
