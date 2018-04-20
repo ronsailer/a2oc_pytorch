@@ -39,10 +39,10 @@ class AOCAgent_PYTORCH():
 		self.reset_storing()
 		self.rng = np.random.RandomState(100+id_num)
 		# input is 8x8
-		model_network = [{"model_type": "conv", "filter_size": [4,4], "pool": [1,1], "stride": [1,1], "out_size": 25, "activation": "relu"},
-		                 {"model_type": "conv", "filter_size": [3,3], "pool": [1,1], "stride": [1,1], "out_size": 9, "activation": "relu"},
-		                 {"model_type": "mlp", "out_size": 48, "activation": "relu"},
-		                 {"model_type": "mlp", "out_size": 5, "activation": "relu"}]
+		model_network = [{"model_type": "conv", "filter_size": [3,3], "pool": [1,1], "stride": [1,1], "out_size": 36, "activation": "relu"},
+		                 {"model_type": "conv", "filter_size": [2,2], "pool": [1,1], "stride": [1,1], "out_size": 25, "activation": "relu"},
+		                 {"model_type": "mlp", "out_size": 256, "activation": "relu"},
+		                 {"model_type": "mlp", "out_size": 48, "activation": "relu"}]
 		out = [None,model_network[-1]["out_size"]]
 		self.conv = Model(model_network, input_size=[None,args.concat_frames*(1 if args.grayscale else 3),8,8])
 		self.termination_model = Model([{"model_type": "mlp", "out_size": args.num_options, "activation": "sigmoid", "W":0}], input_size=out)
@@ -166,7 +166,6 @@ class AOCAgent_PYTORCH():
 	def tracker(self):
 		term_prob = float(self.termination_counter)/self.frame_counter*100
 		csv_things = [self.num_moves.value, self.total_reward, round(term_prob,1)]+list(self.o_tracker_chosen)+list(self.o_tracker_steps)
-		print self.o_tracker_steps
 		with open(self.args.folder_name+"/data.csv", "a") as myfile:
 			myfile.write(",".join([str(cc) for cc in csv_things])+"\n")
 
