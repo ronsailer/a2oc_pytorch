@@ -3,10 +3,17 @@ import matplotlib.pyplot as plt
 import sys, time
 import numpy as np
 
+import os
+
 plt.ion()
 fig = plt.figure()
 plt.show(block=False)
 refresh_rate = 5.0
+
+
+def num_options(splitted_line):
+	return (len(splitted_line) - 3) / 2
+
 
 def handle_close(evt):
   sys.exit()
@@ -24,12 +31,13 @@ while True:
       d = []
       e = []
       filename = sys.argv[i+1]
-      if ".csv" not in filename: filename += "/data.csv"
+      if ".csv" not in filename: filename = os.path.join(filename, "data.csv")
       f = open(filename, "rb")
       for j, line in enumerate(f):
+        num_opt = num_options(line.split(","))
         if not line.split(",")[0].isdigit(): continue
         if weight_moves or ("," in line):
-          d.append(float(line.split(",")[1+show_term]))
+          d.append(sum([float(line.split(",")[3 + num_opt + opt + show_term]) for opt in range(num_opt)]))
           e.append(int(line.split(",")[0]))
           weight_moves = True
         else:

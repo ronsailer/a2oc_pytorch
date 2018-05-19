@@ -2,7 +2,6 @@ from nnet import Model, MLP3D
 import numpy as np
 import pickle,os,theano
 import theano.tensor as T
-from lasagne.updates import norm_constraint
 from collections import OrderedDict
 
 # do not delete this line. Importing gym_gridworld registers the environments in gym. Hacky but deal with it
@@ -39,8 +38,8 @@ class AOCAgent_PYTORCH():
 		self.reset_storing()
 		self.rng = np.random.RandomState(100+id_num)
 		# input is 8x8
-		model_network = [{"model_type": "conv", "filter_size": [3,3], "pool": [1,1], "stride": [1,1], "out_size": 36, "activation": "relu"},
-		                 {"model_type": "conv", "filter_size": [2,2], "pool": [1,1], "stride": [1,1], "out_size": 25, "activation": "relu"},
+		model_network = [{"model_type": "conv", "filter_size": [3, 3], "pool": [1, 1], "stride": [1, 1], "out_size": 36, "activation": "relu"},
+		                 {"model_type": "conv", "filter_size": [2, 2], "pool": [1, 1], "stride": [1, 1], "out_size": 25, "activation": "relu"},
 		                 {"model_type": "mlp", "out_size": 256, "activation": "relu"},
 		                 {"model_type": "mlp", "out_size": 48, "activation": "relu"}]
 		out = [None,model_network[-1]["out_size"]]
