@@ -1,11 +1,11 @@
-import theano, lasagne
+import lasagne
+import theano
 import theano.tensor as T
-import math, csv, time, sys, os, pdb, copy
+from lasagne.layers import Conv2DLayer
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
-from lasagne.layers import Conv2DLayer, conv
 
 if theano.config.device.startswith("gpu"):
-	from lasagne.layers import cuda_convnet
+	pass
 import numpy as np
 
 
@@ -51,8 +51,8 @@ class MLP3D():
 		option_out_size = out_size
 		limits = (6. / np.sqrt(input_size + option_out_size)) / num_options
 		self.options_W = theano.shared(
-			np.random.uniform(size=(num_options, input_size, option_out_size), high=limits, low=-limits).astype(
-				"float32"))
+				np.random.uniform(size=(num_options, input_size, option_out_size), high=limits, low=-limits).astype(
+						"float32"))
 		self.options_b = theano.shared(np.zeros((num_options, option_out_size)).astype("float32"))
 		self.activation = get_activation(activation)
 		self.params = [self.options_W, self.options_b]
@@ -89,19 +89,19 @@ class Model():
 			poolsize = tuple(model["pool"]) if "pool" in model else (1, 1)
 			stride = tuple(model["stride"]) if "stride" in model else (1, 1)
 			layer = conv_type(inputs,
-							  model["out_size"],
-							  filter_size=model["filter_size"],
-							  stride=stride,
-							  nonlinearity=self.get_activation(model),
-							  W=get_init(model, "W"),
-							  b=get_init(model, "b"),
-							  pad="valid" if "pad" not in model else model["pad"])
+			                  model["out_size"],
+			                  filter_size=model["filter_size"],
+			                  stride=stride,
+			                  nonlinearity=self.get_activation(model),
+			                  W=get_init(model, "W"),
+			                  b=get_init(model, "b"),
+			                  pad="valid" if "pad" not in model else model["pad"])
 		elif model["model_type"] == "mlp":
 			layer = lasagne.layers.DenseLayer(inputs,
-											  num_units=model["out_size"],
-											  nonlinearity=self.get_activation(model),
-											  W=get_init(model, "W"),
-											  b=get_init(model, "b"))
+			                                  num_units=model["out_size"],
+			                                  nonlinearity=self.get_activation(model),
+			                                  W=get_init(model, "W"),
+			                                  b=get_init(model, "b"))
 		elif model["model_type"] == "option":
 			layer = MLP3D(model, inputs, nonlinearity=self.get_activation(model))
 		else:
