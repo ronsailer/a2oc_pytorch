@@ -1,45 +1,31 @@
 import lasagne
 import theano
 import theano.tensor as T
-from lasagne.layers import Conv2DLayer
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
+
+import torch
+import torch.nn
+
+from collections import OrderedDict
 
 if theano.config.device.startswith("gpu"):
 	pass
 import numpy as np
 
 
-def get_init(m, t):
-	inits = {"zeros": lasagne.init.Constant(0.), "norm": lasagne.init.Normal(0.1)}
-	if t not in m:
-		if t == "b":
-			return lasagne.init.Constant(0.)
-		return lasagne.init.GlorotUniform()
-	elif isinstance(m[t], basestring):
-		return inits[m[t]]
-	elif isinstance(m[t], int):
-		return lasagne.init.Constant(m[t])
-	else:
-		return m[t]
-
-
 def get_activation(activation):
 	if activation == "softmax":
-		output = T.nnet.softmax
+		output = torch.nn.Softmax()
 	elif activation is None:
 		output = None
 	elif activation == "tanh":
-		output = T.tanh
+		output = torch.nn.Tanh()
 	elif activation == "relu":
-		output = T.nnet.relu
-	elif "leaky_relu" in activation:
-		output = lambda x: T.nnet.relu(x, alpha=float(activation.split(" ")[1]))
+		output = torch.nn.ReLU()
 	elif activation == "linear":
 		output = None
 	elif activation == "sigmoid":
-		output = T.nnet.sigmoid
-	elif activation == "hard_sigmoid":
-		output = T.nnet.hard_sigmoid
+		output = torch.nn.Sigmoid()
 	else:
 		print "activation not recognized:", activation
 		raise NotImplementedError
@@ -85,25 +71,22 @@ class Model():
 	def create_layer(self, inputs, model):
 
 		if model["model_type"] == "conv":
-			conv_type = Conv2DLayer
-			poolsize = tuple(model["pool"]) if "pool" in model else (1, 1)
-			stride = tuple(model["stride"]) if "stride" in model else (1, 1)
-			layer = conv_type(inputs,
+			stride = model["stride"] if "stride" in model else 1
+			# class torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True)[source]
+			layer = torch.nn.Conv2d(inputs,
 			                  model["out_size"],
-			                  filter_size=model["filter_size"],
-			                  stride=stride,
-			                  nonlinearity=self.get_activation(model),
-			                  W=get_init(model, "W"),
-			                  b=get_init(model, "b"),
-			                  pad="valid" if "pad" not in model else model["pad"])
+			                  kernel_size=model["filter_size"],
+			                  stride=stride)
 		elif model["model_type"] == "mlp":
-			layer = lasagne.layers.DenseLayer(inputs,
-			                                  num_units=model["out_size"],
-			                                  nonlinearity=self.get_activation(model),
-			                                  W=get_init(model, "W"),
-			                                  b=get_init(model, "b"))
-		elif model["model_type"] == "option":
-			layer = MLP3D(model, inputs, nonlinearity=self.get_activation(model))
+			# class torch.nn.Linear(in_features, out_features, bias=True)[source]
+			layer = torch.nn.Linear(inputs, out_features=model["out_size"])
+			if "W" in model:
+				torch.nn.init.constant(layer.weight, model["W"])
+			if "b" in model:
+				torch.nn.init.constant(layer.bias, model["b"])
+
+		elif model["model_type"] == "activation":
+			layer = self.get_activation(model)
 		else:
 			print "UNKNOWN LAYER NAME"
 			raise NotImplementedError
@@ -133,11 +116,16 @@ class Model():
 
 		# create neural net layers
 		self.params = []
-		self.layers = []
+		layers_dict = OrderedDict()
+
 		for i, m in enumerate(model):
-			new_layer = self.create_layer(new_layer, m)
-			self.params += new_layer.get_params()
-			self.layers.append(new_layer)
+			layer = self.create_layer(new_layer, m)
+
+			if layer:
+				self.params += list(layer.parameters())
+				layers_dict[m["model_type"] + str(i)] = layer
+
+		self.layers = torch.nn.Sequential(layers_dict)
 
 		print "Build complete."
 		print

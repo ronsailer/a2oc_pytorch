@@ -81,8 +81,9 @@ while True:
 				p, = plt.plot(np.array(range(len(new_matrix))) * frame_interval, np.array(new_matrix))
 			else:
 				p, = plt.plot(
-					np.array(data[i][:-(len(data[i]) % a)]).reshape(((len(data[i]) - (len(data[i]) % a)) / a, a)).mean(
-						axis=1).flatten())
+						np.array(data[i][:-(len(data[i]) % a)]).reshape(
+								((len(data[i]) - (len(data[i]) % a)) / a, a)).mean(
+								axis=1).flatten())
 			all_p.append(p)
 		legends = []
 		for dd in sys.argv[1:]:

@@ -160,7 +160,7 @@ class Training():
 				                                                                               total_reward,
 				                                                                               self.num_moves.value,
 				                                                                               marginal_moves) % (
-				      float(self.num_moves.value) / self.args.max_num_frames * 100)
+					      float(self.num_moves.value) / self.args.max_num_frames * 100)
 				timer = time.time()
 				frame_counter = 0
 

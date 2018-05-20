@@ -1,16 +1,16 @@
 import os
 import pickle
-import theano
 from collections import OrderedDict
 
 import numpy as np
+import theano
 import theano.tensor as T
 
 from nnet import Model, MLP3D
 
 
 # do not delete this line. Importing gym_gridworld registers the environments in gym. Hacky but deal with it
-
+import gym_gridworld
 
 def clip_grads(grads, clip):
 	if clip > 0.1:
@@ -43,19 +43,24 @@ class AOCAgent_PYTORCH():
 		self.reset_storing()
 		self.rng = np.random.RandomState(100 + id_num)
 		# input is 8x8
-		model_network = [{"model_type": "conv", "filter_size": [3, 3], "pool": [1, 1], "stride": [1, 1], "out_size": 36,
-		                  "activation": "relu"},
-		                 {"model_type": "conv", "filter_size": [2, 2], "pool": [1, 1], "stride": [1, 1], "out_size": 25,
-		                  "activation": "relu"},
-		                 {"model_type": "mlp", "out_size": 256, "activation": "relu"},
-		                 {"model_type": "mlp", "out_size": 48, "activation": "relu"}]
-		out = [None, model_network[-1]["out_size"]]
-		self.conv = Model(model_network, input_size=[None, args.concat_frames * (1 if args.grayscale else 3), 8, 8])
+		model_network = [{"model_type": "conv", "filter_size": [3, 3], "pool": [1, 1], "stride": [1, 1], "out_size": 36},
+	                     {"model_type": "activation", "activation": "relu"},
+		                 {"model_type": "conv", "filter_size": [2, 2], "pool": [1, 1], "stride": [1, 1], "out_size": 25},
+		                 {"model_type": "activation", "activation": "relu"},
+		                 {"model_type": "mlp", "out_size": 256},
+		                 {"model_type": "activation", "activation": "relu"},
+		                 {"model_type": "mlp", "out_size": 48},
+		                 {"model_type": "activation", "activation": "relu", "out_size": 48}]
+		out = model_network[-1]["out_size"]
+		self.conv = Model(model_network, input_size=(1 if args.grayscale else 3))
 		self.termination_model = Model(
-				[{"model_type": "mlp", "out_size": args.num_options, "activation": "sigmoid", "W": 0}], input_size=out)
-		self.Q_val_model = Model([{"model_type": "mlp", "out_size": args.num_options, "activation": "linear", "W": 0}],
+				[{"model_type": "mlp", "out_size": args.num_options},
+				 {"model_type": "activation", "activation": "sigmoid", "out_size": args.num_options}],
+				input_size=out)
+		self.Q_val_model = Model([{"model_type": "mlp", "out_size": args.num_options, "W": 0},
+		                          {"model_type": "activation", "activation": "linear", "out_size": args.num_options}],
 		                         input_size=out)
-		self.options_model = MLP3D(input_size=out[1], num_options=args.num_options, out_size=num_actions,
+		self.options_model = MLP3D(input_size=out, num_options=args.num_options, out_size=num_actions,
 		                           activation="softmax")
 		self.params = self.conv.params + self.Q_val_model.params + self.options_model.params + self.termination_model.params
 		self.set_rms_shared_weights(shared_arr)
@@ -110,7 +115,7 @@ class AOCAgent_PYTORCH():
 		args = self.args
 		self.num_moves.value += moves
 		lr = np.max([args.init_lr * (args.max_num_frames - self.num_moves.value) / args.max_num_frames, 0]).astype(
-			"float32")
+				"float32")
 
 		cumul = self.rms_grads(x, a, y, o, delib)
 		for i in range(len(cumul)):
@@ -157,7 +162,7 @@ class AOCAgent_PYTORCH():
 
 	def get_policy_over_options(self, s):
 		return self.get_q_from_s(s)[0].argmax() if self.rng.rand() > self.args.option_epsilon else self.rng.randint(
-			self.args.num_options)
+				self.args.num_options)
 
 	def update_internal_state(self, x):
 		self.current_s = self.get_state([x])[0]
@@ -179,7 +184,7 @@ class AOCAgent_PYTORCH():
 	def tracker(self):
 		term_prob = float(self.termination_counter) / self.frame_counter * 100
 		csv_things = [self.num_moves.value, self.total_reward, round(term_prob, 1)] + list(
-			self.o_tracker_chosen) + list(self.o_tracker_steps)
+				self.o_tracker_chosen) + list(self.o_tracker_steps)
 		with open(self.args.folder_name + "/data.csv", "a") as myfile:
 			myfile.write(",".join([str(cc) for cc in csv_things]) + "\n")
 
@@ -221,7 +226,7 @@ class AOCAgent_PYTORCH():
 		self.o_seq[self.t_counter] = np.copy(self.current_o)
 		self.a_seq[self.t_counter] = np.copy(action)
 		self.r_seq[self.t_counter] = np.copy(float(reward)) - (
-		float(self.terminated) * self.delib * (1 - float(end_ep)))
+			float(self.terminated) * self.delib * (1 - float(end_ep)))
 
 		self.t_counter += 1
 
