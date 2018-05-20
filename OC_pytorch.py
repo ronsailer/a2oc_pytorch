@@ -4,7 +4,8 @@ from collections import OrderedDict
 
 import numpy as np
 import theano
-import theano.tensor as T
+
+import torch
 
 from nnet import Model, MLP3D
 
@@ -14,8 +15,8 @@ import gym_gridworld
 
 def clip_grads(grads, clip):
 	if clip > 0.1:
-		norm = T.sqrt(T.sum([T.sum(T.sqr(g)) for g in grads]) * 2) + 1e-7
-		scale = clip * T.min([1 / norm, 1. / clip]).astype("float32")
+		norm = torch.sqrt(torch.sum(torch.from_numpy(np.array([torch.sum(torch.from_numpy(np.array(torch.mul(g,g)))) for g in grads]))) * 2) + 1e-7
+		scale = clip * float(torch.min(torch.from_numpy(np.array([1 / norm, 1. / clip]))))
 		grads = [g * scale for g in grads]
 	return grads
 
@@ -29,7 +30,7 @@ def rmsprop(params, grads, clip=0, rho=0.99, eps=0.1):
 		rms_weights.append(acc_rms)
 		acc_rms_new = rho * acc_rms + (1 - rho) * grad ** 2
 		updates[acc_rms] = acc_rms_new
-		all_grads.append(grad / T.sqrt(acc_rms_new + eps))
+		all_grads.append(grad / theano.tensor.sqrt(acc_rms_new + eps))
 	return updates, all_grads, rms_weights
 
 
@@ -65,34 +66,34 @@ class AOCAgent_PYTORCH():
 		self.params = self.conv.params + self.Q_val_model.params + self.options_model.params + self.termination_model.params
 		self.set_rms_shared_weights(shared_arr)
 
-		x = T.ftensor4()
-		y = T.fvector()
-		a = T.ivector()
-		o = T.ivector()
-		delib = T.fscalar()
+		x = theano.tensor.ftensor4()
+		y = theano.tensor.fvector()
+		a = theano.tensor.ivector()
+		o = theano.tensor.ivector()
+		delib = theano.tensor.fscalar()
 
 		s = self.conv.apply(x / np.float32(255))
 		intra_option_policy = self.options_model.apply(s, o)
 
 		q_vals = self.Q_val_model.apply(s)
 		disc_q = theano.gradient.disconnected_grad(q_vals)
-		current_option_q = q_vals[T.arange(o.shape[0]), o]
-		disc_opt_q = disc_q[T.arange(o.shape[0]), o]
+		current_option_q = q_vals[theano.tensor.arange(o.shape[0]), o]
+		disc_opt_q = disc_q[theano.tensor.arange(o.shape[0]), o]
 		terms = self.termination_model.apply(s)
-		o_term = terms[T.arange(o.shape[0]), o]
-		V = T.max(q_vals, axis=1) * (1 - self.args.option_epsilon) + (self.args.option_epsilon * T.mean(q_vals, axis=1))
+		o_term = terms[theano.tensor.arange(o.shape[0]), o]
+		V = theano.tensor.max(q_vals, axis=1) * (1 - self.args.option_epsilon) + (self.args.option_epsilon * theano.tensor.mean(q_vals, axis=1))
 		disc_V = theano.gradient.disconnected_grad(V)
 
-		aggr = T.mean  # T.sum
+		aggr = theano.tensor.mean  # T.sum
 		log_eps = 0.0001
 
-		critic_cost = aggr(args.critic_coef * 0.5 * T.sqr(y - current_option_q))
+		critic_cost = aggr(args.critic_coef * 0.5 * theano.tensor.sqr(y - current_option_q))
 		termination_grad = aggr(o_term * ((disc_opt_q - disc_V) + delib))
-		entropy = -aggr(T.sum(intra_option_policy * T.log(intra_option_policy + log_eps), axis=1)) * args.entropy_reg
-		pg = aggr((T.log(intra_option_policy[T.arange(a.shape[0]), a] + log_eps)) * (y - disc_opt_q))
+		entropy = -aggr(theano.tensor.sum(intra_option_policy * theano.tensor.log(intra_option_policy + log_eps), axis=1)) * args.entropy_reg
+		pg = aggr((theano.tensor.log(intra_option_policy[theano.tensor.arange(a.shape[0]), a] + log_eps)) * (y - disc_opt_q))
 		cost = pg + entropy - critic_cost - termination_grad
 
-		grads = T.grad(cost * args.update_freq, self.params)
+		grads = theano.tensor.grad(cost * args.update_freq, self.params)
 		# grads = T.grad(cost, self.params)
 		updates, grad_rms, self.rms_weights = rmsprop(self.params, grads, clip=args.clip)
 		self.share_rms(shared_arr)
