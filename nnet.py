@@ -4,7 +4,6 @@ import theano.tensor as T
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 import torch
-import torch.nn
 
 from collections import OrderedDict
 
@@ -36,10 +35,10 @@ class MLP3D():
 	def __init__(self, input_size=None, num_options=None, out_size=None, activation="softmax"):
 		option_out_size = out_size
 		limits = (6. / np.sqrt(input_size + option_out_size)) / num_options
-		self.options_W = theano.shared(
+		self.options_W = torch.from_numpy(
 				np.random.uniform(size=(num_options, input_size, option_out_size), high=limits, low=-limits).astype(
 						"float32"))
-		self.options_b = theano.shared(np.zeros((num_options, option_out_size)).astype("float32"))
+		self.options_b = torch.from_numpy(np.zeros(shape=(num_options, option_out_size), dtype="float32"))
 		self.activation = get_activation(activation)
 		self.params = [self.options_W, self.options_b]
 
@@ -135,7 +134,7 @@ class Model():
 		for i, m in enumerate(self.model):
 			if m["model_type"] in ["mlp", "logistic", "advantage"] and last_layer_inputs.ndim > 2:
 				last_layer_inputs = last_layer_inputs.flatten(2)
-			last_layer_inputs = self.layers[i].get_output_for(last_layer_inputs)
+			last_layer_inputs = self.layers[i](last_layer_inputs)
 		return last_layer_inputs
 
 	def save_params(self):
