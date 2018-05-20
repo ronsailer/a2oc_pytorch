@@ -1,14 +1,9 @@
 import lasagne
-import theano
-import theano.tensor as T
-from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 import torch
 
 from collections import OrderedDict
 
-if theano.config.device.startswith("gpu"):
-	pass
 import numpy as np
 
 
@@ -46,7 +41,7 @@ class MLP3D():
 		W = self.options_W[option]
 		b = self.options_b[option]
 
-		out = T.sum(inputs.dimshuffle(0, 1, 'x') * W, axis=1) + b
+		out = torch.sum(inputs.dimshuffle(0, 1, 'x') * W, axis=1) + b
 		return out if self.activation is None else self.activation(out)
 
 	def save_params(self):
@@ -99,7 +94,6 @@ class Model():
 				 {"model_type": "mlp", "out_size": 300, "activation": "tanh"},
 				 {"model_type": "mlp", "out_size": 10, "activation": "softmax"}]
 		"""
-		self.theano_rng = RandomStreams(rng)
 		rng = np.random.RandomState(rng)
 		lasagne.random.set_rng(rng)
 
