@@ -3,6 +3,7 @@ import copy
 import os
 import pickle
 import time
+from operator import mul
 from multiprocessing import Process, Value, Array
 
 import numpy as np
@@ -260,7 +261,7 @@ if __name__ == '__main__':
 		init_weights = (AOCAgent_PYTORCH(env.action_space, 0, args=params)).get_param_vals()
 
 	num_moves = Value("i", init_num_moves, lock=False)
-	arr = [Array('f', m.flatten(), lock=False) for m in init_weights]
+	arr = [Array('f', m.view(reduce(mul, m.shape), -1), lock=False) for m in init_weights]
 	seed = np.random.randint(10000)
 	for i in range(params.num_threads):
 		Process(target=f, args=(np.random.RandomState(seed + i), i + 1, arr, num_moves, params)).start()

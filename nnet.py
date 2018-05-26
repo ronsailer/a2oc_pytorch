@@ -33,7 +33,7 @@ class MLP3D():
 		self.options_W = torch.from_numpy(
 				np.random.uniform(size=(num_options, input_size, option_out_size), high=limits, low=-limits).astype(
 						"float32"))
-		self.options_b = torch.from_numpy(np.zeros(shape=(num_options, option_out_size), dtype="float32"))
+		self.options_b = torch.zeros(num_options, option_out_size)
 		self.activation = get_activation(activation)
 		self.params = [self.options_W, self.options_b]
 
@@ -64,13 +64,15 @@ class Model():
 
 	def create_layer(self, inputs, model):
 
+		layers = []
+
 		if model["model_type"] == "conv":
-			stride = model["stride"] if "stride" in model else 1
+			stride = tuple(model["stride"]) if "stride" in model else 1
 			# class torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True)[source]
-			layer = torch.nn.Conv2d(inputs,
+			layers.append(torch.nn.Conv2d(inputs,
 			                  model["out_size"],
 			                  kernel_size=model["filter_size"],
-			                  stride=stride)
+			                  stride=stride))
 		elif model["model_type"] == "mlp":
 			# class torch.nn.Linear(in_features, out_features, bias=True)[source]
 			layer = torch.nn.Linear(inputs, out_features=model["out_size"])
@@ -78,13 +80,17 @@ class Model():
 				torch.nn.init.constant(layer.weight, model["W"])
 			if "b" in model:
 				torch.nn.init.constant(layer.bias, model["b"])
-
-		elif model["model_type"] == "activation":
-			layer = self.get_activation(model)
+			layers.append(layer)
 		else:
 			print "UNKNOWN LAYER NAME"
 			raise NotImplementedError
-		return layer
+
+		if "activation" in model:
+			layer = self.get_activation(model)
+			if layer:
+				layers.append(layer)
+
+		return layers
 
 	def __init__(self, model_in, input_size=None, rng=1234):
 		"""
@@ -112,9 +118,9 @@ class Model():
 		layers_dict = OrderedDict()
 
 		for i, m in enumerate(model):
-			layer = self.create_layer(new_layer, m)
+			layers = self.create_layer(new_layer, m)
 
-			if layer:
+			for layer in layers:
 				self.params += list(layer.parameters())
 				layers_dict[m["model_type"] + str(i)] = layer
 
@@ -124,7 +130,8 @@ class Model():
 		print
 
 	def apply(self, x):
-		last_layer_inputs = x
+		last_layer_inputs = torch.unsqueeze(torch.from_numpy(x),0)
+
 		for i, m in enumerate(self.model):
 			if m["model_type"] in ["mlp", "logistic", "advantage"] and last_layer_inputs.ndim > 2:
 				last_layer_inputs = last_layer_inputs.flatten(2)

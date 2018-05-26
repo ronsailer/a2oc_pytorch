@@ -5,12 +5,15 @@ from collections import OrderedDict
 import numpy as np
 import theano
 
+import theano.tensor as T
+
 import torch
+
 
 from nnet import Model, MLP3D
 
 
-# do not delete this line. Importing gym_gridworld registers the environments in gym. Hacky but deal with it
+# do not delete this line. Importing gym_gridworld registers the environments in gym. Hacky but deal with it for now
 import gym_gridworld
 
 def clip_grads(grads, clip):
@@ -26,11 +29,11 @@ def rmsprop(params, grads, clip=0, rho=0.99, eps=0.1):
 	updates = OrderedDict()
 	all_grads, rms_weights = [], []
 	for param, grad in zip(params, grads):
-		acc_rms = theano.shared(param.get_value() * 0)
+		acc_rms = torch.zeros(param.shape)
 		rms_weights.append(acc_rms)
 		acc_rms_new = rho * acc_rms + (1 - rho) * grad ** 2
 		updates[acc_rms] = acc_rms_new
-		all_grads.append(grad / theano.tensor.sqrt(acc_rms_new + eps))
+		all_grads.append(grad / torch.sqrt(acc_rms_new + eps))
 	return updates, all_grads, rms_weights
 
 
@@ -43,74 +46,123 @@ class AOCAgent_PYTORCH():
 		self.num_moves = num_moves
 		self.reset_storing()
 		self.rng = np.random.RandomState(100 + id_num)
-		# input is 8x8
-		model_network = [{"model_type": "conv", "filter_size": [3, 3], "pool": [1, 1], "stride": [1, 1], "out_size": 36},
-	                     {"model_type": "activation", "activation": "relu"},
-		                 {"model_type": "conv", "filter_size": [2, 2], "pool": [1, 1], "stride": [1, 1], "out_size": 25},
-		                 {"model_type": "activation", "activation": "relu"},
-		                 {"model_type": "mlp", "out_size": 256},
-		                 {"model_type": "activation", "activation": "relu"},
-		                 {"model_type": "mlp", "out_size": 48},
-		                 {"model_type": "activation", "activation": "relu", "out_size": 48}]
+
+		model_network = [{"model_type": "conv", "filter_size": [4, 4], "pool": [1, 1], "stride": [2, 2], "out_size": 32},
+		                 {"model_type": "conv", "filter_size": [3, 3], "pool": [1, 1], "stride": [2, 2], "out_size": 64},
+		                 {"model_type": "mlp", "out_size": 48, "activation": "relu"},
+		                 {"model_type": "mlp", "out_size": 32, "activation": "relu"}]
 		out = model_network[-1]["out_size"]
 		self.conv = Model(model_network, input_size=(1 if args.grayscale else 3))
 		self.termination_model = Model(
-				[{"model_type": "mlp", "out_size": args.num_options},
-				 {"model_type": "activation", "activation": "sigmoid", "out_size": args.num_options}],
+				[{"model_type": "mlp", "out_size": args.num_options, "activation": "sigmoid"}],
 				input_size=out)
-		self.Q_val_model = Model([{"model_type": "mlp", "out_size": args.num_options, "W": 0},
-		                          {"model_type": "activation", "activation": "linear", "out_size": args.num_options}],
+		self.Q_val_model = Model([{"model_type": "mlp", "out_size": args.num_options, "W": 0, "activation": "linear"}],
 		                         input_size=out)
 		self.options_model = MLP3D(input_size=out, num_options=args.num_options, out_size=num_actions,
 		                           activation="softmax")
 		self.params = self.conv.params + self.Q_val_model.params + self.options_model.params + self.termination_model.params
+
+		self.set_rms_weights()
+
 		self.set_rms_shared_weights(shared_arr)
-
-		x = theano.tensor.ftensor4()
-		y = theano.tensor.fvector()
-		a = theano.tensor.ivector()
-		o = theano.tensor.ivector()
-		delib = theano.tensor.fscalar()
-
-		s = self.conv.apply(x / np.float32(255))
-		intra_option_policy = self.options_model.apply(s, o)
-
-		q_vals = self.Q_val_model.apply(s)
-		disc_q = theano.gradient.disconnected_grad(q_vals)
-		current_option_q = q_vals[theano.tensor.arange(o.shape[0]), o]
-		disc_opt_q = disc_q[theano.tensor.arange(o.shape[0]), o]
-		terms = self.termination_model.apply(s)
-		o_term = terms[theano.tensor.arange(o.shape[0]), o]
-		V = theano.tensor.max(q_vals, axis=1) * (1 - self.args.option_epsilon) + (self.args.option_epsilon * theano.tensor.mean(q_vals, axis=1))
-		disc_V = theano.gradient.disconnected_grad(V)
-
-		aggr = theano.tensor.mean  # T.sum
-		log_eps = 0.0001
-
-		critic_cost = aggr(args.critic_coef * 0.5 * theano.tensor.sqr(y - current_option_q))
-		termination_grad = aggr(o_term * ((disc_opt_q - disc_V) + delib))
-		entropy = -aggr(theano.tensor.sum(intra_option_policy * theano.tensor.log(intra_option_policy + log_eps), axis=1)) * args.entropy_reg
-		pg = aggr((theano.tensor.log(intra_option_policy[theano.tensor.arange(a.shape[0]), a] + log_eps)) * (y - disc_opt_q))
-		cost = pg + entropy - critic_cost - termination_grad
-
-		grads = theano.tensor.grad(cost * args.update_freq, self.params)
-		# grads = T.grad(cost, self.params)
-		updates, grad_rms, self.rms_weights = rmsprop(self.params, grads, clip=args.clip)
 		self.share_rms(shared_arr)
 
-		self.get_state = theano.function([x], s, on_unused_input='warn')
-		self.get_policy = theano.function([s, o], intra_option_policy)
-		self.get_termination = theano.function([x], terms)
-		self.get_q = theano.function([x], q_vals)
-		self.get_q_from_s = theano.function([s], q_vals)
-		self.get_V = theano.function([x], V)
 
-		self.rms_grads = theano.function([x, a, y, o, delib], grad_rms, updates=updates, on_unused_input='warn')
+		# x = T.ftensor4()
+		# y = T.fvector()
+		# a = T.ivector()
+		# o = T.ivector()
+		# delib = T.fscalar()
+		#
+		# s = self.conv.apply(x / np.float32(255))
+		# intra_option_policy = self.options_model.apply(s, o)
+		#
+		# q_vals = self.Q_val_model.apply(s)
+		# disc_q = theano.gradient.disconnected_grad(q_vals)
+		# current_option_q = q_vals[T.arange(o.shape[0]), o]
+		# disc_opt_q = disc_q[T.arange(o.shape[0]), o]
+		# terms = self.termination_model.apply(s)
+		# o_term = terms[T.arange(o.shape[0]), o]
+		# V = T.max(q_vals, axis=1) * (1 - self.args.option_epsilon) + (self.args.option_epsilon * T.mean(q_vals, axis=1))
+		# disc_V = theano.gradient.disconnected_grad(V)
+		#
+		# aggr = T.mean  # T.sum
+		# log_eps = 0.0001
+		#
+		# critic_cost = aggr(args.critic_coef * 0.5 * T.sqr(y - current_option_q))
+		# termination_grad = aggr(o_term * ((disc_opt_q - disc_V) + delib))
+		# entropy = -aggr(T.sum(intra_option_policy * T.log(intra_option_policy + log_eps), axis=1)) * args.entropy_reg
+		# pg = aggr((T.log(intra_option_policy[T.arange(a.shape[0]), a] + log_eps)) * (y - disc_opt_q))
+		# cost = pg + entropy - critic_cost - termination_grad
+		#
+		# grads = T.grad(cost * args.update_freq, self.params)
+		# # grads = T.grad(cost, self.params)
+		# updates, grad_rms, self.rms_weights = rmsprop(self.params, grads, clip=args.clip)
+		#
+		# self.get_state = theano.function([x], s, on_unused_input='warn')
+		# self.get_policy = theano.function([s, o], intra_option_policy)
+		# self.get_termination = theano.function([x], terms)
+		# self.get_q = theano.function([x], q_vals)
+		# self.get_q_from_s = theano.function([s], q_vals)
+		# self.get_V = theano.function([x], V)
+		#
+		# self.rms_grads = theano.function([x, a, y, o, delib], grad_rms, updates=updates, on_unused_input='warn')
 		print "ALL COMPILED"
 
 		if not self.args.testing:
 			self.init_tracker()
 		self.initialized = False
+
+
+	def get_state(self, x):
+		return self.conv.apply(x / np.float32(255))
+
+	def get_policy(self, s, o):
+		return self.options_model.apply(s, o)
+
+	def get_termination(self, x):
+		return self.termination_model.apply(x)
+
+	def get_q(self, x):
+		return self.Q_val_model.apply(x)
+
+	def get_q_from_s(self, s):
+		return self.Q_val_model.apply(s)
+
+	def get_V(self, x):
+		q_vals = self.Q_val_model.apply(self.get_state(x))
+		return torch.max(q_vals) * (1 - self.args.option_epsilon) + (self.args.option_epsilon * torch.mean(q_vals))
+
+	def rms_grads(self, x, a, y, o, delib):
+		s = self.get_state(x)
+		intra_option_policy = self.get_policy(s, o)
+		V = self.get_V(x)
+		terms = self.get_termination(s)
+		q_vals = self.get_q(s)
+
+		aggr = torch.mean  # T.sum
+		log_eps = 0.0001
+
+		current_option_q = q_vals[torch.arange(o.shape[0]), o]
+		critic_cost = aggr(self.args.critic_coef * 0.5 * torch.mul(y - current_option_q, y - current_option_q))
+		o_term = terms[torch.arange(o.shape[0]), o]
+		entropy = -aggr(torch.sum(intra_option_policy * torch.log(intra_option_policy + log_eps))) * self.args.entropy_reg
+
+
+		disc_q = q_vals.detach()
+		disc_V = V.detach()
+
+		disc_opt_q = disc_q[torch.arange(o.shape[0]), o]
+
+		termination_grad = aggr(o_term * ((disc_opt_q - disc_V) + delib))
+		pg = aggr((torch.log(intra_option_policy[torch.arange(a.shape[0]), a] + log_eps)) * (y - disc_opt_q))
+		cost = pg + entropy - critic_cost - termination_grad
+
+		grads = T.grad(cost * self.args.update_freq, self.params)
+
+		updates, grad_rms, self.rms_weights = rmsprop(self.params, grads, clip=self.args.clip)
+
+		return grad_rms(x, a, y, o, delib, updates=updates, on_unused_input='warn')
 
 	def update_weights(self, x, a, y, o, moves, delib):
 		args = self.args
@@ -121,7 +173,7 @@ class AOCAgent_PYTORCH():
 		cumul = self.rms_grads(x, a, y, o, delib)
 		for i in range(len(cumul)):
 			self.shared_arr[i] += lr * cumul[i]
-			self.params[i].set_value(self.shared_arr[i])
+			self.params[i] = self.shared_arr[i]
 		return
 
 	def load_values(self, values):
@@ -138,24 +190,31 @@ class AOCAgent_PYTORCH():
 	#  pass
 
 	def get_param_vals(self):
-		return [m.get_value() for m in self.params + self.rms_weights]
+		return [m for m in self.params + self.rms_weights]
 
 	def set_rms_shared_weights(self, shared_arr):
 		if shared_arr is not None:
-			self.shared_arr = [np.frombuffer(s, dtype="float32").reshape(p.get_value().shape) for s, p in
+			self.shared_arr = [np.frombuffer(s, dtype="float32").reshape(p.shape) for s, p in
 			                   zip(shared_arr, self.params)]
 			self.rms_shared_arr = shared_arr[len(self.params):]
 			if self.args.init_num_moves > 0:
 				for s, p in zip(shared_arr, self.params):
-					p.set_value(np.frombuffer(s, dtype="float32").reshape(p.get_value().shape))
+					p.set_value(np.frombuffer(s, dtype="float32").reshape(p.shape))
 				print "LOADED VALUES"
+
+	def set_rms_weights(self):
+		self.rms_weights = []
+		for param in self.params:
+			acc_rms = torch.zeros(param.shape)
+			self.rms_weights.append(acc_rms)
 
 	def share_rms(self, shared_arr):
 		# Ties rms params between threads with borrow=True flag
 		if self.args.rms_shared and shared_arr is not None:
 			assert (len(self.rms_weights) == len(self.rms_shared_arr))
-			for rms_w, s_rms_w in zip(self.rms_weights, self.rms_shared_arr):
-				rms_w.set_value(np.frombuffer(s_rms_w, dtype="float32").reshape(rms_w.get_value().shape), borrow=True)
+			for i, elem in enumerate(zip(self.rms_weights, self.rms_shared_arr)):
+				rms_w, s_rms_w = elem
+				self.rms_weights[i] = torch.from_numpy(np.frombuffer(s_rms_w, dtype="float32").reshape(rms_w.shape))
 
 	def get_action(self, x):
 		p = self.get_policy([self.current_s], [self.current_o])
@@ -166,7 +225,7 @@ class AOCAgent_PYTORCH():
 				self.args.num_options)
 
 	def update_internal_state(self, x):
-		self.current_s = self.get_state([x])[0]
+		self.current_s = self.get_state(x)[0]
 		self.delib = self.args.delib_cost
 
 		if self.terminated:
