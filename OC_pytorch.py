@@ -56,7 +56,7 @@ class AOCAgent_PYTORCH():
 		self.termination_model = Model(
 				[{"model_type": "mlp", "out_size": args.num_options, "activation": "sigmoid"}],
 				input_size=out)
-		self.Q_val_model = Model([{"model_type": "mlp", "out_size": args.num_options, "W": 0, "activation": "linear"}],
+		self.Q_val_model = Model([{"model_type": "mlp", "out_size": args.num_options, "W": 0}],
 		                         input_size=out)
 		self.options_model = MLP3D(input_size=out, num_options=args.num_options, out_size=num_actions,
 		                           activation="softmax")
@@ -119,7 +119,9 @@ class AOCAgent_PYTORCH():
 		if type(x) is np.ndarray:
 			x = torch.from_numpy(x)
 		if x.dim != 4:
+			print "XXX x.shape", x.shape
 			x = torch.unsqueeze(x, 0)
+			print "XXX x.shape after:", x.shape
 		return self.conv.apply(x)
 
 	def get_policy(self, s, o):
@@ -229,10 +231,14 @@ class AOCAgent_PYTORCH():
 
 	def get_action(self, x):
 		p = self.get_policy(self.current_s, self.current_o)
-		return self.rng.choice(range(self.num_actions), p=p[-1])
+		print "XXX p:", p
+		print "XXX self.num_actions:", self.num_actions
+		return self.rng.choice(range(self.num_actions), p=p.data)
 
 	def get_policy_over_options(self, s):
-		return self.get_q_from_s(s)[0].argmax() if self.rng.rand() > self.args.option_epsilon else self.rng.randint(
+		_, index = torch.max(self.get_q_from_s(s)[0], 0)
+
+		return index.data[0] if self.rng.rand() > self.args.option_epsilon else self.rng.randint(
 				self.args.num_options)
 
 	def update_internal_state(self, x):

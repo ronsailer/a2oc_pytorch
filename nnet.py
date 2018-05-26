@@ -40,10 +40,14 @@ class MLP3D():
 		self.params = [self.options_W, self.options_b]
 
 	def apply(self, inputs, option=None):
-		W = self.options_W[option]
-		b = self.options_b[option]
+		W = Variable(self.options_W[option])
+		b = Variable(self.options_b[option])
 
-		out = torch.sum(inputs.dimshuffle(0, 1, 'x') * W, axis=1) + b
+		print "inputs", inputs
+		print "W", W
+		print "b", b
+		out = torch.sum(torch.mm(torch.unsqueeze(inputs,0),W)) + b
+		print "out", out
 		return out if self.activation is None else self.activation(out)
 
 	def save_params(self):
@@ -67,7 +71,7 @@ class Model():
 	def create_layer(self, inputs, model):
 
 		layers = []
-
+		print "XXX {} -> {}".format(inputs, model["out_size"])
 		if model["model_type"] == "conv":
 			stride = tuple(model["stride"]) if "stride" in model else 1
 			# class torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True)[source]
@@ -131,7 +135,8 @@ class Model():
 				layer_num += 1
 
 		self.layers = torch.nn.Sequential(layers_dict)
-
+		for f in self.layers:
+			print "XXX", f
 		print "Build complete."
 		print
 
@@ -146,11 +151,13 @@ class Model():
 		layer_num = 0
 
 		for m in self.model:
-			print "XXX layer_num:", layer_num+1
+			print last_layer_inputs.shape
+			print "XXX layer_num+1:", layer_num+1
 			if m["model_type"] in ["mlp", "logistic", "advantage"] and len(last_layer_inputs.shape) > 2:
 				print "XXX reshaping from {}".format(last_layer_inputs.shape)
-				last_layer_inputs = last_layer_inputs.view(last_layer_inputs.shape[0], last_layer_inputs.shape[1], -1)
+				last_layer_inputs = last_layer_inputs.view(last_layer_inputs.shape[0], -1)
 				print "XXX to {}".format(last_layer_inputs.shape)
+			print "XXX layer_num", layer_num
 			last_layer_inputs = self.layers[layer_num](last_layer_inputs)
 			if "activation" in m:
 				layer_num += 1
