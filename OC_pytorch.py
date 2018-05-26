@@ -3,9 +3,9 @@ import pickle
 from collections import OrderedDict
 
 import numpy as np
-import theano
 
 import theano.tensor as T
+from torch.autograd import Variable
 
 import torch
 
@@ -52,7 +52,7 @@ class AOCAgent_PYTORCH():
 		                 {"model_type": "mlp", "out_size": 48, "activation": "relu"},
 		                 {"model_type": "mlp", "out_size": 32, "activation": "relu"}]
 		out = model_network[-1]["out_size"]
-		self.conv = Model(model_network, input_size=(1 if args.grayscale else 3))
+		self.conv = Model(model_network, input_size=args.concat_frames * (1 if args.grayscale else 3))
 		self.termination_model = Model(
 				[{"model_type": "mlp", "out_size": args.num_options, "activation": "sigmoid"}],
 				input_size=out)
@@ -115,21 +115,32 @@ class AOCAgent_PYTORCH():
 
 
 	def get_state(self, x):
-		return self.conv.apply(x / np.float32(255))
+		print "XXX get_state"
+		if type(x) is np.ndarray:
+			x = torch.from_numpy(x)
+		if x.dim != 4:
+			x = torch.unsqueeze(x, 0)
+		return self.conv.apply(x)
 
 	def get_policy(self, s, o):
+		print "XXX get_policy"
 		return self.options_model.apply(s, o)
 
 	def get_termination(self, x):
+		print "XXX get_termination"
 		return self.termination_model.apply(x)
 
 	def get_q(self, x):
+		print "XXX get_q"
 		return self.Q_val_model.apply(x)
 
 	def get_q_from_s(self, s):
+		print "XXX get_q_from_s"
+		print s
 		return self.Q_val_model.apply(s)
 
 	def get_V(self, x):
+		print "XXX get_V"
 		q_vals = self.Q_val_model.apply(self.get_state(x))
 		return torch.max(q_vals) * (1 - self.args.option_epsilon) + (self.args.option_epsilon * torch.mean(q_vals))
 
@@ -217,7 +228,7 @@ class AOCAgent_PYTORCH():
 				self.rms_weights[i] = torch.from_numpy(np.frombuffer(s_rms_w, dtype="float32").reshape(rms_w.shape))
 
 	def get_action(self, x):
-		p = self.get_policy([self.current_s], [self.current_o])
+		p = self.get_policy(self.current_s, self.current_o)
 		return self.rng.choice(range(self.num_actions), p=p[-1])
 
 	def get_policy_over_options(self, s):
@@ -227,9 +238,9 @@ class AOCAgent_PYTORCH():
 	def update_internal_state(self, x):
 		self.current_s = self.get_state(x)[0]
 		self.delib = self.args.delib_cost
-
+		print self.current_s
 		if self.terminated:
-			self.current_o = self.get_policy_over_options([self.current_s])
+			self.current_o = self.get_policy_over_options(self.current_s)
 			self.o_tracker_chosen[self.current_o] += 1
 
 		self.o_tracker_steps[self.current_o] += 1
@@ -279,7 +290,7 @@ class AOCAgent_PYTORCH():
 		self.total_reward += raw_reward
 		reward = np.clip(raw_reward, -1, 1)
 
-		self.terminated = self.get_termination([new_x])[0][self.current_o] > self.rng.rand()
+		self.terminated = self.get_termination(new_x)[0][self.current_o] > self.rng.rand()
 		self.termination_counter += self.terminated
 
 		self.x_seq[self.t_counter] = np.copy(x)
@@ -297,7 +308,7 @@ class AOCAgent_PYTORCH():
 		option_term = (self.terminated and self.t_counter >= self.args.update_freq)
 		if self.t_counter == self.args.max_update_freq or end_ep or option_term:
 			if not self.args.testing:
-				V = self.get_V([new_x])[0] if self.terminated else self.get_q([new_x])[0][self.current_o]
+				V = self.get_V(new_x)[0] if self.terminated else self.get_q(new_x)[0][self.current_o]
 				R = 0 if end_ep else V
 				V = []
 				for j in range(self.t_counter - 1, -1, -1):

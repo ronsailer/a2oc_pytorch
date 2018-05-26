@@ -190,7 +190,7 @@ class Training():
 
 def parse_params():
 	parser = argparse.ArgumentParser()
-	parser.add_argument('--sub-env', type=str, default="Gridworld2-v0")
+	parser.add_argument('--sub-env', type=str, default="Gridworld0-v0")
 	parser.add_argument('--testing', type=str2bool, default=False)
 	parser.add_argument('--update-freq', type=int, default=5)
 	parser.add_argument('--max-update-freq', type=int, default=30)

@@ -6,6 +6,8 @@ from collections import OrderedDict
 
 import numpy as np
 
+from torch.autograd import Variable
+
 
 def get_activation(activation):
 	if activation == "softmax":
@@ -117,12 +119,16 @@ class Model():
 		self.params = []
 		layers_dict = OrderedDict()
 
-		for i, m in enumerate(model):
+		layer_num = 0
+
+		for m in model:
 			layers = self.create_layer(new_layer, m)
+			new_layer = m["out_size"]
 
 			for layer in layers:
 				self.params += list(layer.parameters())
-				layers_dict[m["model_type"] + str(i)] = layer
+				layers_dict[m["model_type"] + str(layer_num)] = layer
+				layer_num += 1
 
 		self.layers = torch.nn.Sequential(layers_dict)
 
@@ -130,12 +136,26 @@ class Model():
 		print
 
 	def apply(self, x):
-		last_layer_inputs = torch.unsqueeze(torch.from_numpy(x),0)
+		if type(x) is np.ndarray:
+			x = torch.from_numpy(x)
+		if type(x) is not Variable:
+			x = Variable(x, requires_grad=True)
 
-		for i, m in enumerate(self.model):
-			if m["model_type"] in ["mlp", "logistic", "advantage"] and last_layer_inputs.ndim > 2:
-				last_layer_inputs = last_layer_inputs.flatten(2)
-			last_layer_inputs = self.layers[i](last_layer_inputs)
+		last_layer_inputs = x
+
+		layer_num = 0
+
+		for m in self.model:
+			print "XXX layer_num:", layer_num+1
+			if m["model_type"] in ["mlp", "logistic", "advantage"] and len(last_layer_inputs.shape) > 2:
+				print "XXX reshaping from {}".format(last_layer_inputs.shape)
+				last_layer_inputs = last_layer_inputs.view(last_layer_inputs.shape[0], last_layer_inputs.shape[1], -1)
+				print "XXX to {}".format(last_layer_inputs.shape)
+			last_layer_inputs = self.layers[layer_num](last_layer_inputs)
+			if "activation" in m:
+				layer_num += 1
+				last_layer_inputs = self.layers[layer_num](last_layer_inputs)
+			layer_num += 1
 		return last_layer_inputs
 
 	def save_params(self):
