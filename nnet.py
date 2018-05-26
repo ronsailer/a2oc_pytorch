@@ -11,7 +11,7 @@ from torch.autograd import Variable
 
 def get_activation(activation):
 	if activation == "softmax":
-		output = torch.nn.Softmax()
+		output = torch.nn.Softmax(dim=0)
 	elif activation is None:
 		output = None
 	elif activation == "tanh":
@@ -30,12 +30,11 @@ def get_activation(activation):
 
 class MLP3D():
 	def __init__(self, input_size=None, num_options=None, out_size=None, activation="softmax"):
-		option_out_size = out_size
-		limits = (6. / np.sqrt(input_size + option_out_size)) / num_options
+		limits = (6. / np.sqrt(input_size + out_size)) / num_options
 		self.options_W = torch.from_numpy(
-				np.random.uniform(size=(num_options, input_size, option_out_size), high=limits, low=-limits).astype(
+				np.random.uniform(size=(num_options, input_size, out_size), high=limits, low=-limits).astype(
 						"float32"))
-		self.options_b = torch.zeros(num_options, option_out_size)
+		self.options_b = torch.zeros(num_options, out_size)
 		self.activation = get_activation(activation)
 		self.params = [self.options_W, self.options_b]
 

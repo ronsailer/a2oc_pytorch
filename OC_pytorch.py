@@ -54,7 +54,7 @@ class AOCAgent_PYTORCH():
 		out = model_network[-1]["out_size"]
 		self.conv = Model(model_network, input_size=args.concat_frames * (1 if args.grayscale else 3))
 		self.termination_model = Model(
-				[{"model_type": "mlp", "out_size": args.num_options, "activation": "sigmoid"}],
+				[{"model_type": "mlp", "out_size": args.num_options, "activation": "sigmoid", "W":0}],
 				input_size=out)
 		self.Q_val_model = Model([{"model_type": "mlp", "out_size": args.num_options, "W": 0}],
 		                         input_size=out)
@@ -126,11 +126,11 @@ class AOCAgent_PYTORCH():
 
 	def get_policy(self, s, o):
 		print "XXX get_policy"
-		return self.options_model.apply(s, o)
+		return self.options_model.apply(s, o).data
 
 	def get_termination(self, x):
 		print "XXX get_termination"
-		return self.termination_model.apply(x)
+		return self.termination_model.apply(self.get_state(x)).data
 
 	def get_q(self, x):
 		print "XXX get_q"
@@ -138,7 +138,6 @@ class AOCAgent_PYTORCH():
 
 	def get_q_from_s(self, s):
 		print "XXX get_q_from_s"
-		print s
 		return self.Q_val_model.apply(s)
 
 	def get_V(self, x):
@@ -231,9 +230,7 @@ class AOCAgent_PYTORCH():
 
 	def get_action(self, x):
 		p = self.get_policy(self.current_s, self.current_o)
-		print "XXX p:", p
-		print "XXX self.num_actions:", self.num_actions
-		return self.rng.choice(range(self.num_actions), p=p.data)
+		return self.rng.choice(range(self.num_actions), p=p)
 
 	def get_policy_over_options(self, s):
 		_, index = torch.max(self.get_q_from_s(s)[0], 0)
@@ -311,6 +308,7 @@ class AOCAgent_PYTORCH():
 		# cut off at self.args.max_update_freq
 		# min steps: self.args.update_freq (usually 5 like a3c)
 		# this doesn't make option length a minimum of 5 (they can still terminate). only batch size
+
 		option_term = (self.terminated and self.t_counter >= self.args.update_freq)
 		if self.t_counter == self.args.max_update_freq or end_ep or option_term:
 			if not self.args.testing:
