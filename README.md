@@ -1,6 +1,6 @@
 # a2oc_pytorch
 
-# Continued at: https://github.com/ronsailer/pytorch-a2c-a2oc-ppo-acktr
+### Continued at: https://github.com/ronsailer/pytorch-a2c-a2oc-ppo-acktr
 
 DISCONTINUED: I've stopped working on this halfway through. THIS DOES NOT WORK.
 
